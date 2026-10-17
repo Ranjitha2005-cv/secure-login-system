@@ -13,10 +13,15 @@ A beginner-friendly project to demonstrate secure user authentication and passwo
 ## Technologies
 - Python
 - SQL
-- HTML and CSS
+- HTML
 
 ## Purpose
 This project aims to understand the basics of web application security and secure authentication.
 
 ## Status
-Project setup in progress. Features will be documented as they are implemented.
+devloped 
+
+## Live Demo
+Click here to view the website 
+https://venerable-gumdrop-564ca3.netlify.app/
+
