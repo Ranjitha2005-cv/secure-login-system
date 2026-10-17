@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecureLogin · Registration, Sessions & 2FA</title>
+<meta name="description" content="Secure login demo: PBKDF2-hashed passwords, input validation, session management, lockout and TOTP two-factor authentication. Runs entirely in your browser.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔐</text></svg>">
+<style>
+:root{
+  --bg:#eef1f8; --card:#ffffff; --text:#0f172a; --muted:#5a6478; --line:#e0e5f0;
+  --accent:#5b5bd6; --accent2:#8b5cf6; --accent-ink:#ffffff; --good:#15803d; --bad:#b91c1c; --warn:#b45309;
+  --field:#f7f9fd; --shadow:0 2px 4px rgba(15,23,42,.05),0 12px 32px rgba(15,23,42,.08);
+  --hero:linear-gradient(135deg,#e7e9ff 0%,#f3e8ff 100%);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0b0e17; --card:#141927; --text:#e8ecf5; --muted:#93a0b8; --line:#262e42;
+    --accent:#8b8bff; --accent2:#b18cff; --accent-ink:#0b0e17; --good:#4ade80; --bad:#ff7b7b; --warn:#fbbf24;
+    --field:#0d1220; --shadow:none;
+    --hero:linear-gradient(135deg,#171b33 0%,#241a3b 100%);
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+.hidden{display:none!important}
+.nav{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 18px;background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.brand{font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}
+.tag{font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--hero);color:var(--accent);border:1px solid var(--line);text-transform:uppercase;letter-spacing:.08em}
+#nav{display:flex;gap:4px;flex-wrap:wrap}
+#nav button{background:none;border:0;font:inherit;font-weight:600;font-size:.92rem;padding:8px 12px;border-radius:9px;color:var(--muted);cursor:pointer}
+#nav button:hover,#nav button.on{background:var(--field);color:var(--text)}
+main{max-width:720px;margin:0 auto;padding:20px 16px 56px}
+.notice{font-size:.85rem;color:var(--muted);background:var(--hero);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;margin-top:16px;box-shadow:var(--shadow)}
+.card.narrow{max-width:450px;margin-left:auto;margin-right:auto}
+h1{font-size:1.55rem;margin:0 0 4px;letter-spacing:-.025em}
+h2{font-size:1.08rem;margin:0 0 10px}
+h3{font-size:.95rem;margin:18px 0 6px}
+.sub{color:var(--muted);margin:4px 0 14px;font-size:.95rem}
+label{display:block;font-weight:600;font-size:.88rem;margin:14px 0 6px}
+input[type=text],input[type=password],input[type=email],input:not([type]){width:100%;font:inherit;padding:12px;border:1px solid var(--line);border-radius:11px;background:var(--field);color:var(--text)}
+input:focus,button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{font:inherit;font-weight:700;cursor:pointer;margin-top:16px;padding:12px 16px;border-radius:11px;border:1px solid var(--line);background:var(--field);color:var(--text)}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:var(--accent-ink);border-color:transparent;width:100%}
+.btn.danger{background:transparent;color:var(--bad);border-color:var(--bad)}
+.btn.small{margin-top:8px;padding:7px 11px;font-size:.85rem}
+.btn:disabled{opacity:.55;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.flash{border-radius:11px;padding:10px 14px;margin:14px 0 0;font-size:.93rem;border:1px solid var(--line);background:var(--field)}
+.flash.success{border-color:var(--good);color:var(--good)}
+.flash.error{border-color:var(--bad);color:var(--bad)}
+.errors{margin:14px 0 0;padding:10px 14px 10px 30px;border:1px solid var(--bad);color:var(--bad);border-radius:11px;font-size:.9rem}
+.errors:empty{display:none}
+small.hint{display:block;color:var(--muted);margin-top:5px;font-size:.82rem}
+.meter{height:6px;border-radius:99px;background:var(--line);margin-top:8px;overflow:hidden}
+.meter i{display:block;height:100%;width:0;transition:width .25s,background .25s}
+.checks{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:8px;font-size:.8rem;color:var(--muted)}
+.checks span.ok{color:var(--good)}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.75rem;font-weight:700;border:1px solid var(--line);color:var(--muted)}
+.pill.good{color:var(--good);border-color:var(--good)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:8px}
+.stat{background:var(--field);border:1px solid var(--line);border-radius:12px;padding:12px}
+.stat b{display:block;font-size:1.05rem;word-break:break-word}
+.stat span{color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.06em}
+.qr{background:#fff;padding:12px;border-radius:12px;width:min(230px,100%);margin:12px auto}
+.qr svg{width:100%;height:auto;display:block}
+code,.mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+code.key{display:block;background:var(--field);border:1px solid var(--line);border-radius:10px;padding:10px;word-break:break-all;letter-spacing:.06em;text-align:center}
+pre.q{margin:6px 0 0;padding:10px 12px;border-radius:10px;background:var(--field);border:1px solid var(--line);font-size:.8rem;white-space:pre-wrap;word-break:break-all}
+pre.q.bad{border-left:4px solid var(--bad)}
+pre.q.good{border-left:4px solid var(--good)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{border:1px solid var(--line);background:var(--field);color:var(--text);border-radius:999px;padding:5px 11px;font:inherit;font-size:.8rem;cursor:pointer}
+ul.feat{padding-left:18px;margin:8px 0 0}
+ul.feat li{margin:4px 0}
+.steps{color:var(--muted);padding-left:20px;margin:8px 0}
+footer{margin-top:26px;color:var(--muted);font-size:.8rem}
+</style>
+</head>
+<body>
+<header class="nav">
+  <div class="brand">🔐 SecureLogin <span class="tag">demo</span></div>
+  <nav id="nav" aria-label="Main"></nav>
+</header>
+
+<main>
+  <div class="notice">Front-end demo: accounts live only in this browser (localStorage). For a real production system, do the same checks on a server. Use a throwaway password here.</div>
+  <div id="flash" class="flash hidden" role="status"></div>
+  <div id="nocrypto" class="flash error hidden">This browser blocked the Web Crypto API (it needs HTTPS or localhost). Open the deployed HTTPS site instead.</div>
+
+  <!-- LOGIN -->
+  <section id="v-login" class="card narrow hidden">
+    <h1>Welcome back</h1>
+    <p class="sub">Log in to your account.</p>
+    <div id="login-err" class="flash error hidden" role="alert"></div>
+    <form id="f-login" autocomplete="on">
+      <label for="l-id">Username or email</label>
+      <input id="l-id" name="identifier" required maxlength="254" autocomplete="username">
+      <label for="l-pw">Password</label>
+      <input id="l-pw" name="password" type="password" required maxlength="128" autocomplete="current-password">
+      <button class="btn primary" type="submit">Log in</button>
+    </form>
+    <p class="sub" style="margin-bottom:0">New here? <a href="#" data-go="register">Create an account</a></p>
+  </section>
+
+  <!-- REGISTER -->
+  <section id="v-register" class="card narrow hidden">
+    <h1>Create account</h1>
+    <p class="sub">Your password is hashed with PBKDF2-SHA256 (310,000 iterations, random salt). It is never stored in plain text.</p>
+    <ul id="reg-errors" class="errors" role="alert"></ul>
+    <form id="f-register">
+      <label for="r-user">Username</label>
+      <input id="r-user" name="username" required minlength="3" maxlength="30" pattern="[A-Za-z0-9_]+" autocomplete="username">
+      <small class="hint">3–30 letters, numbers or underscore.</small>
+      <label for="r-email">Email</label>
+      <input id="r-email" name="email" type="email" required maxlength="254" autocomplete="email">
+      <label for="r-pw">Password</label>
+      <input id="r-pw" name="password" type="password" required minlength="10" maxlength="72" autocomplete="new-password">
+      <div class="meter"><i id="meter"></i></div>
+      <div class="checks" id="checks"></div>
+      <label for="r-pw2">Confirm password</label>
+      <input id="r-pw2" name="confirm" type="password" required maxlength="72" autocomplete="new-password">
+      <button class="btn primary" type="submit">Register</button>
+    </form>
+    <p class="sub" style="margin-bottom:0">Already registered? <a href="#" data-go="login">Log in</a></p>
+  </section>
+
+  <!-- 2FA VERIFY -->
+  <section id="v-2fa" class="card narrow hidden">
+    <h1>Two-factor authentication</h1>
+    <p class="sub">Enter the 6-digit code from your authenticator app.</p>
+    <div id="tf-err" class="flash error hidden" role="alert"></div>
+    <form id="f-2fa">
+      <label for="tf-code">Code</label>
+      <input id="tf-code" name="code" required inputmode="numeric" pattern="\d{6}" maxlength="6" autocomplete="one-time-code">
+      <button class="btn primary" type="submit">Verify</button>
+    </form>
+    <p class="sub" style="margin-bottom:0"><a href="#" data-go="login">Back to login</a></p>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="v-dash" class="hidden">
+    <div class="card">
+      <h1>Hello, <span id="d-name"></span> 👋</h1>
+      <p class="sub" id="d-email"></p>
+      <div class="stats">
+        <div class="stat"><span>Session expires (idle)</span><b id="d-timer" class="mono">--:--</b></div>
+        <div class="stat"><span>Signed in</span><b id="d-signed"></b></div>
+        <div class="stat"><span>2FA</span><b id="d-2fa"></b></div>
+      </div>
+      <button class="btn" id="d-logout">Log out</button>
+    </div>
+
+    <div class="card">
+      <h2>Two-factor authentication (optional)</h2>
+      <div id="tfa-off" class="hidden">
+        <p class="sub">Add a second step so a leaked password alone can't unlock your account.</p>
+        <button class="btn primary" id="tfa-start" style="width:auto">Set up 2FA</button>
+        <div id="tfa-setup" class="hidden">
+          <ol class="steps">
+            <li>Open Google Authenticator, Authy, 1Password or similar.</li>
+            <li>Scan the QR code, or type the key manually.</li>
+            <li>Enter the 6-digit code it shows.</li>
+          </ol>
+          <div id="qr" class="qr hidden"></div>
+          <code class="key" id="tfa-key"></code>
+          <div id="tfa-err" class="flash error hidden" role="alert"></div>
+          <form id="f-tfa-confirm">
+            <label for="tfa-code">6-digit code</label>
+            <input id="tfa-code" required inputmode="numeric" pattern="\d{6}" maxlength="6" autocomplete="one-time-code">
+            <button class="btn primary" type="submit">Verify &amp; enable</button>
+          </form>
+        </div>
+      </div>
+      <div id="tfa-on" class="hidden">
+        <p><span class="pill good">Enabled</span> A code is required at every login.</p>
+        <form id="f-tfa-disable">
+          <label for="dis-pw">Password</label>
+          <input id="dis-pw" type="password" required maxlength="128" autocomplete="current-password">
+          <label for="dis-code">Current 6-digit code</label>
+          <input id="dis-code" required inputmode="numeric" pattern="\d{6}" maxlength="6" autocomplete="one-time-code">
+          <button class="btn danger" type="submit">Disable 2FA</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Delete account</h2>
+      <p class="sub">Removes this account from your browser.</p>
+      <form id="f-delete">
+        <label for="del-pw">Confirm with password</label>
+        <input id="del-pw" type="password" required maxlength="128" autocomplete="current-password">
+        <button class="btn danger" type="submit">Delete my account</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- SECURITY LAB -->
+  <section id="v-lab" class="hidden">
+    <div class="card">
+      <h1>Security lab</h1>
+      <p class="sub">See why parameterised queries stop SQL injection, and how input validation adds a second layer.</p>
+      <label for="sq-in">Try a username</label>
+      <input id="sq-in" value="' OR '1'='1' --" maxlength="120" autocomplete="off" spellcheck="false">
+      <div class="chips" id="sq-chips"></div>
+      <h3>❌ Vulnerable: string concatenation</h3>
+      <pre class="q bad" id="sq-bad"></pre>
+      <p class="hint" id="sq-bad-note" style="color:var(--bad);font-size:.85rem;margin:6px 0 0"></p>
+      <h3>✅ Safe: parameterised query</h3>
+      <pre class="q good" id="sq-good"></pre>
+      <p class="hint" style="font-size:.85rem;margin:6px 0 0">The input is sent as data, separate from the SQL text, so it can never change the query.</p>
+      <h3>✅ Input validation</h3>
+      <pre class="q good" id="sq-val"></pre>
+    </div>
+    <div class="card">
+      <h2>What this demo implements</h2>
+      <ul class="feat">
+        <li><b>Hashed passwords:</b> PBKDF2-SHA256, 310,000 iterations, unique 16-byte salt, constant-time comparison. (bcrypt/Argon2 need a server; see the Flask version.)</li>
+        <li><b>Validation:</b> username whitelist, email format, length + strength rules, common-password check.</li>
+        <li><b>Sessions:</b> random 256-bit token, 15-minute idle timeout, 8-hour maximum, cleared on logout.</li>
+        <li><b>Brute-force defence:</b> account locks for 60 seconds after 5 failed attempts; generic error messages; dummy hash for unknown users to hide timing.</li>
+        <li><b>2FA:</b> standard TOTP (RFC 6238), compatible with any authenticator app, ±30 s drift, replay protection.</li>
+        <li><b>XSS:</b> all user-provided text is inserted with <code>textContent</code>, never as HTML.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>Educational demo. Client-side code can't protect a real database: enforce these rules on the server as well.</footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+// ============================ CORE ============================
+const ITER=310000, MAX_FAILS=5, LOCK_MS=60*1000;
+const IDLE_MS=15*60*1000, ABS_MS=8*60*60*1000, PENDING_MS=5*60*1000;
+const enc=new TextEncoder();
+const b64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const randHex=n=>[...crypto.getRandomValues(new Uint8Array(n))].map(b=>b.toString(16).padStart(2,"0")).join("");
+
+async function pbkdf2(password,salt,iter=ITER){
+  const key=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt,iterations:iter},key,256));
+}
+function ctEq(a,b){ if(a.length!==b.length)return false; let d=0; for(let i=0;i<a.length;i++)d|=a[i]^b[i]; return d===0; }
+
+// ---- Base32 + TOTP (RFC 4226 / 6238) ----
+const B32="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+function b32enc(bytes){let bits="",out="";for(const b of bytes)bits+=b.toString(2).padStart(8,"0");for(let i=0;i<bits.length;i+=5)out+=B32[parseInt(bits.slice(i,i+5).padEnd(5,"0"),2)];return out;}
+function b32dec(s){let bits="";for(const c of s.replace(/=+$/,"").toUpperCase())bits+=B32.indexOf(c).toString(2).padStart(5,"0");const out=[];for(let i=0;i+8<=bits.length;i+=8)out.push(parseInt(bits.slice(i,i+8),2));return new Uint8Array(out);}
+async function hotp(keyBytes,counter){
+  const key=await crypto.subtle.importKey("raw",keyBytes,{name:"HMAC",hash:"SHA-1"},false,["sign"]);
+  const buf=new ArrayBuffer(8),dv=new DataView(buf);
+  dv.setUint32(0,Math.floor(counter/4294967296)); dv.setUint32(4,counter>>>0);
+  const h=new Uint8Array(await crypto.subtle.sign("HMAC",key,buf)),o=h[19]&15;
+  const n=((h[o]&0x7f)<<24)|(h[o+1]<<16)|(h[o+2]<<8)|h[o+3];
+  return String(n%1000000).padStart(6,"0");
+}
+async function checkTotp(secretB32,lastStep,code,nowMs=Date.now()){
+  if(!/^\d{6}$/.test(code||""))return null;
+  const key=b32dec(secretB32),now=Math.floor(nowMs/30000);
+  for(const off of [-1,0,1]){const step=now+off; if(step>lastStep&&await hotp(key,step)===code)return step;}
+  return null;
+}
+
+// ---- Validation ----
+const USERNAME_RE=/^[A-Za-z0-9_]{3,30}$/;
+const EMAIL_RE=/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/;
+const COMMON=new Set(["password","password1","password123","1234567890","123456789","qwertyuiop","letmein123","iloveyou123","admin12345","welcome123"]);
+function pwChecks(pw,username=""){
+  return [
+    ["10+ characters",pw.length>=10],
+    ["letter + number",/[A-Za-z]/.test(pw)&&/\d/.test(pw)],
+    ["upper & lower case",/[a-z]/.test(pw)&&/[A-Z]/.test(pw)],
+    ["symbol",/[^A-Za-z0-9]/.test(pw)],
+    ["14+ characters",pw.length>=14]
+  ];
+}
+function validateRegistration(username,email,pw,confirm){
+  const e=[];
+  if(!USERNAME_RE.test(username))e.push("Username must be 3-30 characters: letters, numbers or underscore.");
+  if(email.length>254||!EMAIL_RE.test(email))e.push("Please enter a valid email address.");
+  if(pw.length<10)e.push("Password must be at least 10 characters.");
+  if(new TextEncoder().encode(pw).length>72)e.push("Password must be at most 72 bytes.");
+  if(!(/[A-Za-z]/.test(pw)&&/\d/.test(pw)))e.push("Password must contain at least one letter and one number.");
+  if(username&&pw.toLowerCase().includes(username.toLowerCase()))e.push("Password must not contain your username.");
+  if(COMMON.has(pw.toLowerCase()))e.push("That password is too common.");
+  if(pw!==confirm)e.push("Passwords do not match.");
+  return e;
+}
+// ============================ END CORE ============================
+
+// ============================ UI ============================
+if(typeof document!=="undefined"){
+const $=s=>document.querySelector(s);
+const GENERIC="Invalid credentials, or the account is temporarily locked.";
+const DUMMY_SALT=new Uint8Array(16);
+let pending=null,setupSecret=null,view="login",lastTouch=0;
+
+if(!(window.crypto&&crypto.subtle))$("#nocrypto").classList.remove("hidden");
+
+// ---- storage ----
+function loadUsers(){try{return JSON.parse(localStorage.getItem("sl_users")||"{}");}catch{return {};}}
+function saveUsers(u){localStorage.setItem("sl_users",JSON.stringify(u));}
+function getSession(){
+  try{
+    const s=JSON.parse(sessionStorage.getItem("sl_session")||"null"); if(!s)return null;
+    const now=Date.now();
+    if(now-s.l>IDLE_MS||now-s.c>ABS_MS){sessionStorage.removeItem("sl_session");return {expired:true};}
+    return s;
+  }catch{return null;}
+}
+function startSession(username){
+  const now=Date.now();
+  sessionStorage.setItem("sl_session",JSON.stringify({t:randHex(32),u:username,c:now,l:now}));
+}
+function currentUser(){
+  const s=getSession(); if(!s||s.expired)return null;
+  const users=loadUsers(),u=users[s.u]; return u?{key:s.u,u,s,users}:null;
+}
+function findUser(ident,users){
+  const id=ident.toLowerCase();
+  for(const k in users){if(k===id||users[k].email===id)return k;}
+  return null;
+}
+
+// ---- ui helpers ----
+function flash(msg,kind="success"){
+  const f=$("#flash");f.textContent=msg;f.className="flash "+kind;
+  clearTimeout(flash.t);flash.t=setTimeout(()=>f.classList.add("hidden"),6000);
+}
+function showBox(sel,msg){const b=$(sel);if(msg){b.textContent=msg;b.classList.remove("hidden");}else b.classList.add("hidden");}
+function go(v){
+  if((v==="dash")&&!currentUser())v="login";
+  view=v;
+  document.querySelectorAll("main>section").forEach(s=>s.classList.toggle("hidden",s.id!=="v-"+v));
+  renderNav(); if(v==="dash")renderDash(); window.scrollTo(0,0);
+}
+function renderNav(){
+  const nav=$("#nav"),user=currentUser(); nav.textContent="";
+  const items=user?[["dash","Dashboard"],["lab","Security lab"],["logout","Log out"]]:[["login","Log in"],["register","Register"],["lab","Security lab"]];
+  for(const [k,label] of items){
+    const b=document.createElement("button");b.textContent=label;if(k===view)b.className="on";
+    b.onclick=()=>k==="logout"?logout():go(k);nav.appendChild(b);
+  }
+}
+document.addEventListener("click",e=>{const a=e.target.closest("[data-go]");if(a){e.preventDefault();go(a.dataset.go);}});
+
+function logout(msg="You have been logged out."){
+  sessionStorage.removeItem("sl_session");pending=null;setupSecret=null;
+  go("login");flash(msg);
+}
+
+// ---- register ----
+function updateMeter(){
+  const pw=$("#r-pw").value,checks=pwChecks(pw),score=checks.filter(c=>c[1]).length;
+  const m=$("#meter");m.style.width=(pw?score/checks.length*100:0)+"%";
+  m.style.background=score<=2?"var(--bad)":score<=3?"var(--warn)":"var(--good)";
+  const box=$("#checks");box.textContent="";
+  for(const [label,ok] of checks){const s=document.createElement("span");s.textContent=(ok?"✓ ":"○ ")+label;if(ok)s.className="ok";box.appendChild(s);}
+}
+$("#r-pw").addEventListener("input",updateMeter);updateMeter();
+
+$("#f-register").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const f=e.target,btn=f.querySelector("button");
+  const username=f.username.value.trim(),email=f.email.value.trim().toLowerCase(),pw=f.password.value;
+  const errs=validateRegistration(username,email,pw,f.confirm.value);
+  const list=$("#reg-errors");list.textContent="";
+  const users=loadUsers();
+  if(!errs.length&&(users[username.toLowerCase()]||Object.values(users).some(u=>u.email===email)))errs.push("That username or email is already registered.");
+  for(const m of errs){const li=document.createElement("li");li.textContent=m;list.appendChild(li);}
+  if(errs.length)return;
+  btn.disabled=true;btn.textContent="Hashing password…";
+  try{
+    const salt=crypto.getRandomValues(new Uint8Array(16)),hash=await pbkdf2(pw,salt);
+    users[username.toLowerCase()]={username,email,salt:b64(salt),hash:b64(hash),iter:ITER,created:Date.now(),fails:0,lockedUntil:0,totp:null};
+    saveUsers(users);f.reset();updateMeter();go("login");flash("Account created. You can log in now.");
+  }finally{btn.disabled=false;btn.textContent="Register";}
+});
+
+// ---- login ----
+$("#f-login").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const f=e.target,btn=f.querySelector("button");
+  const ident=f.identifier.value.trim().slice(0,254),pw=f.password.value.slice(0,128);
+  btn.disabled=true;btn.textContent="Checking…";
+  try{
+    const users=loadUsers(),key=findUser(ident,users),u=key?users[key]:null,now=Date.now();
+    // always run the KDF so timing doesn't reveal whether the account exists
+    const derived=await pbkdf2(pw,u?unb64(u.salt):DUMMY_SALT,u?u.iter:ITER);
+    const ok=u?ctEq(derived,unb64(u.hash)):false,locked=!!(u&&u.lockedUntil>now);
+    if(u&&ok&&!locked){
+      u.fails=0;saveUsers(users);f.reset();showBox("#login-err","");
+      if(u.totp&&u.totp.enabled){pending={key,at:now};$("#f-2fa").reset();showBox("#tf-err","");go("2fa");return;}
+      startSession(key);go("dash");flash("Welcome back!");return;
+    }
+    if(u&&!locked){
+      u.fails=(u.fails||0)+1;
+      if(u.fails>=MAX_FAILS){u.fails=0;u.lockedUntil=now+LOCK_MS;}
+      saveUsers(users);
+    }
+    showBox("#login-err",GENERIC);
+  }finally{btn.disabled=false;btn.textContent="Log in";}
+});
+
+// ---- 2FA at login ----
+$("#f-2fa").addEventListener("submit",async e=>{
+  e.preventDefault();
+  if(!pending||Date.now()-pending.at>PENDING_MS){pending=null;go("login");flash("Please log in again.","error");return;}
+  const users=loadUsers(),u=users[pending.key];
+  if(!u||u.lockedUntil>Date.now()){pending=null;go("login");flash(GENERIC,"error");return;}
+  const step=await checkTotp(u.totp.secret,u.totp.lastStep||0,e.target.code.value.trim());
+  if(step){
+    u.totp.lastStep=step;u.fails=0;saveUsers(users);
+    const k=pending.key;pending=null;startSession(k);go("dash");flash("Signed in with two-factor authentication.");return;
+  }
+  u.fails=(u.fails||0)+1;
+  if(u.fails>=MAX_FAILS){u.fails=0;u.lockedUntil=Date.now()+LOCK_MS;saveUsers(users);pending=null;go("login");flash(GENERIC,"error");return;}
+  saveUsers(users);showBox("#tf-err","Invalid or already-used code.");
+});
+
+// ---- dashboard ----
+function renderDash(){
+  const cu=currentUser();if(!cu)return go("login");
+  $("#d-name").textContent=cu.u.username;
+  $("#d-email").textContent="Signed in as "+cu.u.email;
+  $("#d-signed").textContent=new Date(cu.s.c).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  const on=!!(cu.u.totp&&cu.u.totp.enabled);
+  $("#d-2fa").textContent=on?"On":"Off";
+  $("#tfa-on").classList.toggle("hidden",!on);
+  $("#tfa-off").classList.toggle("hidden",on);
+  if(on){setupSecret=null;$("#tfa-setup").classList.add("hidden");$("#tfa-start").classList.remove("hidden");}
+  tick();
+}
+function tick(){
+  const s=getSession();
+  if(s&&s.expired){logout("Your session expired. Please log in again.");return;}
+  if(view==="dash"&&s){
+    const left=Math.max(0,Math.min(IDLE_MS-(Date.now()-s.l),ABS_MS-(Date.now()-s.c)));
+    const m=Math.floor(left/60000),sec=Math.floor(left%60000/1000);
+    $("#d-timer").textContent=String(m).padStart(2,"0")+":"+String(sec).padStart(2,"0");
+  }
+}
+setInterval(tick,1000);
+["click","keydown","touchstart"].forEach(ev=>document.addEventListener(ev,()=>{
+  const now=Date.now();if(now-lastTouch<5000)return;lastTouch=now;
+  const s=getSession();if(s&&!s.expired){s.l=now;sessionStorage.setItem("sl_session",JSON.stringify(s));}
+},{passive:true}));
+$("#d-logout").onclick=()=>logout();
+
+// ---- 2FA setup / disable ----
+$("#tfa-start").onclick=()=>{
+  const cu=currentUser();if(!cu)return;
+  setupSecret=b32enc(crypto.getRandomValues(new Uint8Array(20)));
+  const uri="otpauth://totp/"+encodeURIComponent("SecureLogin:"+cu.u.email)+"?secret="+setupSecret+"&issuer=SecureLogin";
+  $("#tfa-key").textContent=setupSecret.match(/.{1,4}/g).join(" ");
+  const qr=$("#qr");qr.textContent="";qr.classList.add("hidden");
+  try{
+    if(typeof qrcode==="function"){
+      const q=qrcode(0,"M");q.addData(uri);q.make();
+      let svg;try{svg=q.createSvgTag({cellSize:4,margin:0,scalable:true});}catch{svg=q.createSvgTag(4,0);}
+      qr.innerHTML=svg;qr.classList.remove("hidden"); // svg generated locally from our own URI
+    }
+  }catch{}
+  showBox("#tfa-err","");$("#f-tfa-confirm").reset();
+  $("#tfa-setup").classList.remove("hidden");$("#tfa-start").classList.add("hidden");
+};
+$("#f-tfa-confirm").addEventListener("submit",async e=>{
+  e.preventDefault();const cu=currentUser();if(!cu||!setupSecret)return;
+  const step=await checkTotp(setupSecret,0,$("#tfa-code").value.trim());
+  if(!step){showBox("#tfa-err","That code didn't match. Check your authenticator app and try again.");return;}
+  cu.u.totp={secret:setupSecret,enabled:true,lastStep:step};saveUsers(cu.users);
+  setupSecret=null;renderDash();flash("Two-factor authentication is now enabled.");
+});
+$("#f-tfa-disable").addEventListener("submit",async e=>{
+  e.preventDefault();const cu=currentUser();if(!cu)return;
+  const derived=await pbkdf2($("#dis-pw").value,unb64(cu.u.salt),cu.u.iter);
+  const step=ctEq(derived,unb64(cu.u.hash))?await checkTotp(cu.u.totp.secret,cu.u.totp.lastStep||0,$("#dis-code").value.trim()):null;
+  if(!step){flash("Password or code was incorrect.","error");return;}
+  cu.u.totp=null;saveUsers(cu.users);e.target.reset();renderDash();flash("Two-factor authentication disabled.");
+});
+$("#f-delete").addEventListener("submit",async e=>{
+  e.preventDefault();const cu=currentUser();if(!cu)return;
+  const derived=await pbkdf2($("#del-pw").value,unb64(cu.u.salt),cu.u.iter);
+  if(!ctEq(derived,unb64(cu.u.hash))){flash("Password was incorrect.","error");return;}
+  delete cu.users[cu.key];saveUsers(cu.users);e.target.reset();logout("Account deleted.");
+});
+
+// ---- security lab ----
+const PAYLOADS=["' OR '1'='1' --","admin'; DROP TABLE users; --","alice","x' UNION SELECT password_hash FROM users --"];
+const chips=$("#sq-chips");
+for(const p of PAYLOADS){const b=document.createElement("button");b.className="chip";b.type="button";b.textContent=p.length>22?p.slice(0,22)+"…":p;b.onclick=()=>{$("#sq-in").value=p;lab();};chips.appendChild(b);}
+function lab(){
+  const v=$("#sq-in").value;
+  $("#sq-bad").textContent="query = \"SELECT * FROM users WHERE username = '\" + input + \"'\"\n\n→ SELECT * FROM users WHERE username = '"+v+"'";
+  const attack=/'|"|--|;|\b(or|union|drop|select)\b/i.test(v);
+  $("#sq-bad-note").textContent=attack?"⚠ The input breaks out of the quotes and changes the meaning of the query.":"Looks harmless here, but the same code is exploitable with a crafted input.";
+  $("#sq-good").textContent="query = \"SELECT * FROM users WHERE username = ?\"\nparams = ["+JSON.stringify(v)+"]\n\n→ looks for a user literally named that string";
+  const ok=USERNAME_RE.test(v);
+  $("#sq-val").textContent=ok?"✓ Accepted: matches ^[A-Za-z0-9_]{3,30}$":"✗ Rejected before it reaches the database: usernames may only contain letters, numbers and underscore (3-30).";
+}
+$("#sq-in").addEventListener("input",lab);lab();
+
+go(currentUser()?"dash":"login");
+}
+</script>
+</body>
+</html>
